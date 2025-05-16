@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "WebSocket u76d1u63a7u5668",
+  "version": "1.0.0",
+  "description": "u76d1u542cu548cu663eu793au9875u9762u4e0au7684 WebSocket u6d88u606f",
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
+  "action": {
+    "default_title": "WebSocket u76d1u63a7u5668"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "inject.js", "main.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+} 
