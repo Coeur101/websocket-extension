@@ -49,11 +49,6 @@ function initSidebar(): void {
     container = elements.container;
     iframe = elements.iframe;
     sidebarCreated = true;
-
-    // 设置初始状态为可见，方便测试
-    container.style.width = '380px';
-
-    console.log('WebSocket监控侧边栏已初始化并显示');
   }
 }
 
@@ -96,6 +91,42 @@ function toggleSidebar(): void {
 chrome.runtime.onMessage.addListener((message: any) => {
   if (message.action === 'toggle_sidebar') {
     toggleSidebar();
+  }
+});
+
+// 监听来自页面的消息
+window.addEventListener('message', (event) => {
+  if (event.data && event.data.source === 'websocket-hooks-script') {
+    if (event.data.type === 'WEBSOCKET_URL_SEARCH') {
+      // 如果侧边栏是关闭的，则打开它
+      if (container?.style.width === '0px') {
+        toggleSidebar();
+      }
+      // 转发消息到侧边栏
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(event.data, '*');
+      }
+    }
+  }
+});
+
+// 监听来自iframe的消息
+window.addEventListener('message', (event) => {
+  const msgEvent = event as MessageEvent;
+  if (msgEvent.data && msgEvent.data.source === 'websocket-sidebar') {
+    if (msgEvent.data.action === 'toggle_status_ui') {
+      // 向页面注入脚本发送消息
+      const script = document.createElement('script');
+      script.textContent = `
+        window.postMessage({
+          source: 'content-script',
+          action: 'toggle_status_ui',
+          show: ${msgEvent.data.show}
+        }, '*');
+      `;
+      document.documentElement.appendChild(script);
+      document.documentElement.removeChild(script);
+    }
   }
 });
 
@@ -157,7 +188,7 @@ function storeMessage(message: WebSocketMessage): void {
       if (!message.tabUrl) {
         message.tabUrl = window.location.href;
       }
-      
+
       console.log('立即转发消息到iframe:', message);
       iframe.contentWindow.postMessage(message, '*');
     } catch (error) {
@@ -185,7 +216,7 @@ window.addEventListener('message', (event: Event) => {
     if (!msgEvent.data.tabUrl) {
       msgEvent.data.tabUrl = window.location.href;
     }
-    
+
     console.log('content.js 接收到postMessage', msgEvent.data);
 
     // 首先转发到iframe确保实时性，再存储
@@ -202,7 +233,7 @@ window.addEventListener('message', (event: Event) => {
 
     // 处理获取历史消息请求
     if (msgEvent.data.action === 'get_messages') {
-      chrome.runtime.sendMessage({ 
+      chrome.runtime.sendMessage({
         action: 'get_messages',
         tabUrl: window.location.href
       }, (response: any) => {
@@ -222,7 +253,7 @@ window.addEventListener('message', (event: Event) => {
 
     // 处理定期轮询请求 - 会返回同样的历史消息，但不会清空现有消息
     else if (msgEvent.data.type === 'POLLING' && msgEvent.data.action === 'get_messages') {
-      chrome.runtime.sendMessage({ 
+      chrome.runtime.sendMessage({
         action: 'get_messages',
         tabUrl: window.location.href
       }, (response: any) => {
@@ -242,8 +273,8 @@ window.addEventListener('message', (event: Event) => {
 
     // 处理清空消息请求
     else if (msgEvent.data.action === 'clear_messages') {
-      chrome.runtime.sendMessage({ 
-        action: 'clear_messages', 
+      chrome.runtime.sendMessage({
+        action: 'clear_messages',
         tabUrl: msgEvent.data.tabUrl || window.location.href
       }, (response: any) => {
         if (response && response.success) {
@@ -270,4 +301,4 @@ injectHelperScript();
 injectScript();
 
 // 确保文件被识别为模块
-export {}; 
+export { }; 

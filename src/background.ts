@@ -13,10 +13,10 @@ function addMessageToStorage(message: WebSocketMessage, tabUrl?: string): void {
   if (!websocketMessagesMap[msgTabUrl]) {
     websocketMessagesMap[msgTabUrl] = [];
   }
-
-  // 添加消息到对应标签页的数组
-  websocketMessagesMap[msgTabUrl].unshift(message);
-
+  if (message.type !== 'WEBSOCKET_URL_SEARCH') {
+    // 添加消息到对应标签页的数组
+    websocketMessagesMap[msgTabUrl].unshift(message);
+  }
   // 限制消息数量
   if (websocketMessagesMap[msgTabUrl].length > MAX_STORED_MESSAGES) {
     websocketMessagesMap[msgTabUrl] = websocketMessagesMap[msgTabUrl].slice(0, MAX_STORED_MESSAGES);
@@ -30,7 +30,7 @@ function addMessageToStorage(message: WebSocketMessage, tabUrl?: string): void {
 function clearStoredMessages(tabUrl?: string): void {
   if (tabUrl) {
     // 清空特定标签页的消息
-    delete websocketMessagesMap[tabUrl];
+    websocketMessagesMap[tabUrl] = [];
     chrome.storage.local.remove(tabUrl, () => {
       console.log(`已清空标签页 ${tabUrl} 的消息`);
     });
@@ -69,11 +69,13 @@ chrome.runtime.onMessage.addListener((message: CommunicationMessage, sender: chr
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs: chrome.tabs.Tab[]) => {
       const currentTab = tabs[0];
       const activeTabUrl = currentTab?.url || message.tabUrl || '';
-
-      sendResponse({
-        activeTabUrl: activeTabUrl,
-        messages: websocketMessagesMap
-      });
+      // 如果历史消息没有更新则不发送
+      if (websocketMessagesMap[activeTabUrl]?.length > 0) {
+        sendResponse({
+          activeTabUrl: activeTabUrl,
+          messages: websocketMessagesMap
+        });
+      }
     });
 
     // 返回true以便异步发送响应

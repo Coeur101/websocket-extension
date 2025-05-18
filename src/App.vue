@@ -1,19 +1,8 @@
 <template>
   <div id="websocket-sidebar-container" :class="{ 'sidebar-visible': isOpen, 'sidebar-hidden': !isOpen }">
-    <button @click="toggleSidebar" class="toggle-button" :title="isOpen ? '收起面板' : '展开面板'">
-      <svg v-if="isOpen" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-        class="bi bi-chevron-right" viewBox="0 0 16 16">
-        <path fill-rule="evenodd"
-          d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z" />
-      </svg>
-      <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-        class="bi bi-chevron-left" viewBox="0 0 16 16">
-        <path fill-rule="evenodd"
-          d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z" />
-      </svg>
-    </button>
     <div class="sidebar-content">
       <h3>WebSocket 监控</h3>
+
 
       <!-- 标签页切换器 - 消息类型 -->
       <div class="tab-switcher message-type-tabs">
@@ -26,40 +15,55 @@
 
       <!-- 标签页 URL 选择器 -->
       <div class="tab-url-filter">
-        <select v-model="activeTabUrl" class="url-select">
-          <option value="">所有标签页</option>
-          <option v-for="url in tabUrls" :key="url" :value="url">
-            {{ getHostFromUrl(url) }}
+        <select class="url-select" v-model="activeTabUrl">
+          <option v-for="tab in tabUrls" :key="tab.value" :value="tab.value">
+            {{ tab.label }}
           </option>
         </select>
-        <span class="url-count" v-if="tabUrls.length > 0">{{ tabUrls.length }} 个标签页</span>
+        <n-space vertical>
+          <n-input v-model:value="value" @change="debouncedSearch" type="text" placeholder="搜索nodeId或Api" clearable />
+        </n-space>
       </div>
-
-      <!-- 消息列表 -->
-      <div class="message-list-container" ref="messageListContainerRef">
-        <div v-if="filteredMessages.length === 0" class="empty-message">
-          {{ activeMessageTab === 'all' ? '等待 WebSocket 消息...' : `没有${activeMessageTab === 'send' ? '发送' : '接收'}的消息` }}
+      <div class="empty-message preview-warning" v-if="!activeTabUrl?.includes('preview')">
+        <div class="warning-icon">⚠️</div>
+        <div class="warning-content">
+          <h4>仅支持预览模式</h4>
+          <p>请在 DASV 预览页面模式下查看 WebSocket 消息</p>
         </div>
-        <div v-for="(msg, index) in filteredMessages" :key="msg.id || index" class="message-item"
-          :class="[msg.data.direction, { 'highlight': msg.isNew }]">
-          <div class="message-header">
-            <span class="timestamp">{{ formatTimestamp(msg.data.timestamp) }}</span>
-            <div class="message-meta">
-              <span class="direction-tag" :class="msg.data.direction">{{ getDirectionText(msg.data.direction) }}</span>
-              <span class="tab-host" v-if="!activeTabUrl && msg.tabUrl" :title="msg.tabUrl">{{
-                getHostFromUrl(msg.tabUrl) }}</span>
+      </div>
+      <template v-else>
+        <!-- 消息列表 -->
+        <div class="message-list-container" ref="messageListContainerRef">
+          <n-space item-style="display: flex;" align="center" justify="center">
+            <n-checkbox v-model:checked="showStatusUI" @update:checked="toggleStatusUI">
+              显示状态UI
+            </n-checkbox>
+          </n-space>
+          <div v-if="filteredMessages.length === 0" class="empty-message">
+            {{ activeMessageTab === 'all' ? '等待 WebSocket 消息...' : `没有${activeMessageTab === 'send' ? '发送' : '接收'}的消息`
+            }}
+          </div>
+          <div v-for="(msg, index) in filteredMessages" :key="msg.id || index" class="message-item"
+            :class="[msg.data.direction, { 'highlight': msg.isNew }]">
+            <div class="message-header">
+              <span class="timestamp">{{ formatTimestamp(msg.data.timestamp) }}</span>
+              <div class="message-meta">
+                <span class="direction-tag" :class="msg.data.direction">{{ getDirectionText(msg.data.direction)
+                }}</span>
+                <span class="tab-host" v-if="!activeTabUrl && msg.tabUrl" :title="msg.tabUrl">{{
+                  getHostFromUrl(msg.tabUrl) }}</span>
+              </div>
             </div>
+            <div class="message-url" v-if="msg.data.url">
+              <small title="WebSocket URL">连接: {{ truncateUrl(msg.data.url, 40) }}</small>
+            </div>
+            <pre class="message-data">{{ formatMessageContent(msg.data) }}</pre>
           </div>
-          <div class="message-url" v-if="msg.data.url">
-            <small title="WebSocket URL">连接: {{ truncateUrl(msg.data.url, 40) }}</small>
-          </div>
-          <pre class="message-data" @click="copyToClipboard(msg.data.message)"
-            title="点击复制消息内容">{{ formatMessageContent(msg.data.message) }}</pre>
         </div>
-      </div>
-
+      </template>
       <div class="sidebar-footer">
-        <span class="message-count">{{ filteredMessages.length }}/{{ messages.length }} 条消息</span>
+        <span class="message-count">{{ filteredMessages.length }}/{{ messages[activeTabUrl as string]?.length }}
+          条消息</span>
         <div class="action-buttons">
           <button @click="toggleAutoScroll" class="action-btn" :class="{ active: autoScroll }" title="自动滚动到新消息">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
@@ -70,6 +74,7 @@
           <button @click="clearMessages" class="action-btn clear-btn" title="清空消息列表">清空</button>
         </div>
       </div>
+
     </div>
   </div>
 </template>
@@ -80,8 +85,13 @@ import type {
   WebSocketMessage,
   MessageMap,
   MessageTab,
-  MessageDirection
+  MessageDirection,
+  WebSocketMessageData,
+  SystemMessageData
 } from './types/websocket';
+import { NInput, NSpace, NCheckbox } from 'naive-ui';
+import { useFormData } from './utils/useFormData';
+import { useDebounceFn } from '@vueuse/core';
 
 // 响应式数据
 const isOpen = ref<boolean>(true);
@@ -91,8 +101,13 @@ const nextMessageId = ref<number>(0);
 const messageListContainerRef = ref<HTMLElement | null>(null);
 const autoScroll = ref<boolean>(true);
 const activeMessageTab = ref<'all' | 'send' | 'receive'>('all');
-const activeTabUrl = ref<string>('');
+const activeTabUrl = ref<string | null>(null);
 const initialTabUrl = ref<string>('');
+const tabUrls = ref<{ label: string, value: string }[]>([]);
+const value = ref<string>('');
+const searchValue = ref<string>('');
+const showStatusUI = ref(true);
+
 
 // 消息类型标签页
 const messageTabs: MessageTab[] = [
@@ -107,20 +122,24 @@ const filteredMessages = computed(() => {
     return [];
   }
 
-  return messages.value[activeTabUrl.value].filter(msg => {
+  let filterMessages = messages.value[activeTabUrl.value].filter(msg => {
     const typeMatch = activeMessageTab.value === 'all' ||
       (activeMessageTab.value === 'send' && msg.data.direction === 'send') ||
       (activeMessageTab.value === 'receive' && msg.data.direction === 'receive');
-
     return typeMatch;
   });
+
+  if (searchValue.value) {
+    filterMessages = filterMessages.filter(msg => {
+      return msg.data.message?.includes(searchValue.value)
+    })
+  }
+  return filterMessages;
 });
 
-// 计算属性：所有标签页 URL 列表
-const tabUrls = computed(() => {
-  if (!messages.value) return [];
-  return Object.keys(messages.value);
-});
+const debouncedSearch = useDebounceFn((value: string) => {
+  searchValue.value = value;
+}, 300);
 
 // 方法：根据消息类型获取消息数量
 const getMessageCountByType = (type: 'all' | 'send' | 'receive'): number => {
@@ -146,10 +165,6 @@ const getHostFromUrl = (url: string): string => {
   }
 };
 
-// 切换侧边栏
-const toggleSidebar = (): void => {
-  isOpen.value = !isOpen.value;
-};
 
 // 切换自动滚动
 const toggleAutoScroll = (): void => {
@@ -162,23 +177,30 @@ const toggleAutoScroll = (): void => {
 // 处理接收到的消息
 const handleMessage = (event: MessageEvent): void => {
   try {
-    console.log('App.vue 接收到消息:', event.source, event.data);
-
     if (event.data && event.data.source === 'content-script' && event.data.action === 'messages_loaded') {
       if (event.data.messages) {
-        messages.value = event.data.messages;
+        if (messages.value[event.data.activeTabUrl].length !== event.data.messages[event.data.activeTabUrl].length) {
+          messages.value = event.data.messages;
 
-        if (!activeTabUrl.value && event.data.activeTabUrl) {
-          activeTabUrl.value = event.data.activeTabUrl;
-          initialTabUrl.value = event.data.activeTabUrl;
-        }
+          tabUrls.value = [{ label: '清空所有消息页', value: '' }, ...Object.keys(messages.value).map(item => {
+            return {
+              label: item,
+              value: item
+            }
+          })];
 
-        if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
-          messages.value[activeTabUrl.value] = [];
-        }
+          if (!activeTabUrl.value && event.data.activeTabUrl) {
+            activeTabUrl.value = event.data.activeTabUrl;
+            initialTabUrl.value = event.data.activeTabUrl;
+          }
 
-        if (autoScroll.value) {
-          scrollToTop();
+          if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
+            messages.value[activeTabUrl.value] = [];
+          }
+
+          if (autoScroll.value) {
+            scrollToTop();
+          }
         }
       }
       return;
@@ -204,7 +226,10 @@ const handleMessage = (event: MessageEvent): void => {
         (event.data.type &&
           (event.data.type === 'WEBSOCKET_MESSAGE' ||
             event.data.type === 'WEBSOCKET_CONNECTION')));
-
+    if (event.data.type === 'WEBSOCKET_URL_SEARCH') {
+      searchValue.value = event.data.searchUrl || ''
+      value.value = event.data.searchUrl || ''
+    }
     if (isWebSocketMessage) {
       processMessage(event.data);
     }
@@ -232,12 +257,12 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
       messages.value[msgTabUrl] = [];
     }
 
-    let messageToAdd: WebSocketMessage;
+    let messageToAdd: WebSocketMessage | null;
 
     const baseData = {
       id: nextMessageId.value++,
       timestamp: receivedEvent.data?.timestamp || new Date().toISOString(),
-      url: receivedEvent.data?.url,
+      url: receivedEvent.data?.url || '',
       isNew: true,
       tabUrl: msgTabUrl,
       direction: receivedEvent.data.direction,
@@ -271,13 +296,13 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
     }
 
     const isDuplicate = messages.value[msgTabUrl].some(m =>
-      m.data.message === messageToAdd.data.message &&
+      m.data.message === messageToAdd?.data.message &&
       m.data.direction === messageToAdd.data.direction &&
       Math.abs(new Date(m.data.timestamp).getTime() - new Date(messageToAdd.data.timestamp).getTime()) < 100
     );
 
     if (!isDuplicate) {
-      messages.value[msgTabUrl].unshift(messageToAdd);
+      messages.value[msgTabUrl].unshift(messageToAdd as WebSocketMessage);
       if (messages.value[msgTabUrl].length > 200) {
         messages.value[msgTabUrl].pop();
       }
@@ -287,7 +312,7 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
       }
 
       setTimeout(() => {
-        const newMsg = messages.value[msgTabUrl].find(m => m.id === messageToAdd.id);
+        const newMsg = messages.value[msgTabUrl].find(m => m.id === messageToAdd?.id);
         if (newMsg) newMsg.data.isNew = false;
       }, 1500);
     }
@@ -324,22 +349,19 @@ const truncateUrl = (url: string, maxLength: number = 40): string => {
 };
 
 // 格式化消息内容
-const formatMessageContent = (content: string): string => {
-  if (!content) return '';
-
-  try {
-    if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
-      const parsedJson = JSON.parse(content);
-      return JSON.stringify(parsedJson, null, 2);
-    }
-  } catch (e) {
-    // 如果不是有效 JSON，返回原始内容
+const formatMessageContent = (data: WebSocketMessageData | SystemMessageData): string => {
+  const { direction } = data
+  const { formSendData, formReceiveData } = useFormData()
+  if (direction === 'send') {
+    return formSendData(data.message) as string
   }
-
-  return content;
+  if (direction === 'receive') {
+    return formReceiveData(data.message) as string
+  }
+  return data.message
 };
 
-// 滚动到底部
+// 滚动到顶部
 const scrollToTop = (): void => {
   nextTick(() => {
     if (messageListContainerRef.value) {
@@ -350,29 +372,19 @@ const scrollToTop = (): void => {
 
 // 清空消息
 const clearMessages = (): void => {
-  if (!activeTabUrl.value || !messages.value[activeTabUrl.value]) {
-    return;
+
+  if (activeTabUrl.value) {
+    messages.value[activeTabUrl.value] = [];
+    connectedUrl.value = null;
+  } else {
+    messages.value = {};
   }
-
-  messages.value[activeTabUrl.value] = [];
-  connectedUrl.value = null;
-
   if (window.parent !== window) {
     window.parent.postMessage({
       source: 'websocket-sidebar',
       action: 'clear_messages',
       tabUrl: activeTabUrl.value
     }, '*');
-  }
-};
-
-// 复制内容到剪贴板
-const copyToClipboard = async (text: string): Promise<void> => {
-  try {
-    await navigator.clipboard.writeText(text);
-    console.log('Message copied to clipboard');
-  } catch (err) {
-    console.error('Failed to copy message: ', err);
   }
 };
 
@@ -384,7 +396,7 @@ watch(activeMessageTab, () => {
 });
 
 // 监听 activeTabUrl 变化，切换显示的标签页消息
-watch(activeTabUrl, (newUrl: string) => {
+watch(activeTabUrl, (newUrl: string | null) => {
   if (newUrl && !messages.value[newUrl]) {
     messages.value[newUrl] = [];
   }
@@ -409,10 +421,6 @@ onMounted(() => {
     }
   }, 2000);
 
-  window.addEventListener('toggle-ws-sidebar-visibility', () => {
-    toggleSidebar();
-    console.log('侧边栏可见性已切换:', isOpen.value ? '显示' : '隐藏');
-  });
 
   if (window.parent !== window) {
     window.parent.postMessage({
@@ -425,12 +433,21 @@ onMounted(() => {
   onBeforeUnmount(() => {
     clearInterval(messagePollingInterval);
     window.removeEventListener('message', handleMessage);
-    window.removeEventListener('toggle-ws-sidebar-visibility', toggleSidebar);
   });
 });
+
+// 添加切换状态UI的方法
+function toggleStatusUI(checked: boolean) {
+  // 向content script发送消息
+  window.parent.postMessage({
+    source: 'websocket-sidebar',
+    action: 'toggle_status_ui',
+    show: checked
+  }, '*');
+}
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 #websocket-sidebar-container {
   position: fixed;
   top: 0;
@@ -452,43 +469,6 @@ onMounted(() => {
 
 #websocket-sidebar-container.sidebar-visible {
   transform: translateX(0%);
-}
-
-.toggle-button {
-  position: absolute;
-  left: -0px;
-  top: 50%;
-  transform: translateY(-50%) translateX(-100%);
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  padding: 12px 8px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  cursor: pointer;
-  border-radius: 8px 0 0 8px;
-  font-size: 13px;
-  line-height: 1;
-  box-shadow: -3px 0px 6px rgba(0, 0, 0, 0.1);
-  transition: background-color 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-
-.toggle-button:hover {
-  background-color: #0056b3;
-}
-
-.toggle-button svg {
-  width: 18px;
-  height: 18px;
-  transform: rotate(90deg);
-}
-
-#websocket-sidebar-container.sidebar-visible .toggle-button svg {
-  transform: rotate(-90deg);
 }
 
 .sidebar-content {
@@ -579,6 +559,11 @@ h3 {
   font-size: 0.9em;
   background-color: white;
   color: #495057;
+  height: 34px;
+
+  &:focus {
+    outline: none;
+  }
 }
 
 .url-count {
@@ -774,5 +759,60 @@ pre.message-data:hover {
 
 .clear-btn:hover {
   background-color: #c82333;
+}
+
+.preview-warning {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 8px;
+  margin: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .warning-icon {
+    font-size: 32px;
+    margin-bottom: 16px;
+    animation: bounce 2s infinite;
+  }
+
+  .warning-content {
+    text-align: center;
+
+    h4 {
+      color: #856404;
+      margin: 0 0 8px 0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    p {
+      color: #666;
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  }
+}
+
+@keyframes bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
 }
 </style>

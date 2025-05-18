@@ -1,6 +1,6 @@
 // WebSocket消息类型
 export type MessageDirection = 'send' | 'receive' | 'system';
-export type MessageType = 'WEBSOCKET_MESSAGE' | 'WEBSOCKET_CONNECTION' | 'INFO';
+export type MessageType = 'WEBSOCKET_MESSAGE' | 'WEBSOCKET_CONNECTION' | 'INFO' | 'WEBSOCKET_URL_SEARCH';
 
 // 基础消息数据结构
 export interface BaseMessageData {
@@ -30,6 +30,7 @@ export interface WebSocketMessage {
   source: string;
   type: MessageType;
   tabUrl: string;
+  searchUrl?: string;
   data: WebSocketMessageData | SystemMessageData;
 }
 
