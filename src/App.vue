@@ -155,7 +155,7 @@ const toggleSidebar = (): void => {
 const toggleAutoScroll = (): void => {
   autoScroll.value = !autoScroll.value;
   if (autoScroll.value) {
-    scrollToBottom();
+    scrollToTop();
   }
 };
 
@@ -178,7 +178,7 @@ const handleMessage = (event: MessageEvent): void => {
         }
 
         if (autoScroll.value) {
-          scrollToBottom();
+          scrollToTop();
         }
       }
       return;
@@ -193,7 +193,7 @@ const handleMessage = (event: MessageEvent): void => {
         }
 
         if (autoScroll.value) {
-          scrollToBottom();
+          scrollToTop();
         }
       }
       return;
@@ -283,7 +283,7 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
       }
 
       if (autoScroll.value) {
-        scrollToBottom();
+        scrollToTop();
       }
 
       setTimeout(() => {
@@ -340,10 +340,10 @@ const formatMessageContent = (content: string): string => {
 };
 
 // 滚动到底部
-const scrollToBottom = (): void => {
+const scrollToTop = (): void => {
   nextTick(() => {
     if (messageListContainerRef.value) {
-      messageListContainerRef.value.scrollTop = messageListContainerRef.value.scrollHeight;
+      messageListContainerRef.value.scrollTop = 0;
     }
   });
 };
@@ -379,7 +379,7 @@ const copyToClipboard = async (text: string): Promise<void> => {
 // 监听 tab 切换，自动滚动到底部
 watch(activeMessageTab, () => {
   if (autoScroll.value) {
-    nextTick(() => scrollToBottom());
+    nextTick(() => scrollToTop());
   }
 });
 
@@ -390,7 +390,7 @@ watch(activeTabUrl, (newUrl: string) => {
   }
 
   if (autoScroll.value) {
-    nextTick(() => scrollToBottom());
+    nextTick(() => scrollToTop());
   }
 });
 
