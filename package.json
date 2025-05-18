@@ -10,14 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "dotenv": "^16.5.0",
     "vue": "^3.3.4"
   },
   "devDependencies": {
+    "@types/chrome": "^0.0.323",
+    "@types/node": "^22.15.18",
+    "@types/vue": "^2.0.0",
     "@vitejs/plugin-vue": "^4.2.3",
     "eslint": "^8.34.0",
     "eslint-config-prettier": "^8.6.0",
     "eslint-plugin-prettier": "^4.2.1",
     "eslint-plugin-vue": "^9.9.0",
+    "naive-ui": "^2.41.0",
     "prettier": "^2.8.4",
     "typescript": "^5.0.2",
     "vite": "^4.4.6"

@@ -74,22 +74,28 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import type {
+  WebSocketMessage,
+  MessageMap,
+  MessageTab,
+  MessageDirection
+} from './types/websocket';
 
 // 响应式数据
-const isOpen = ref(true);
-const messages = ref({}); // 改为对象，以标签页URL为键
-const connectedUrl = ref(null);
-const nextMessageId = ref(0);
-const messageListContainerRef = ref(null);
-const autoScroll = ref(true);
-const activeMessageTab = ref('all'); // 'all', 'send', 'receive'
-const activeTabUrl = ref(''); // 当前选中的标签页 URL
-const initialTabUrl = ref(''); // 初始标签页 URL
+const isOpen = ref<boolean>(true);
+const messages = ref<MessageMap>({});
+const connectedUrl = ref<string | null>(null);
+const nextMessageId = ref<number>(0);
+const messageListContainerRef = ref<HTMLElement | null>(null);
+const autoScroll = ref<boolean>(true);
+const activeMessageTab = ref<'all' | 'send' | 'receive'>('all');
+const activeTabUrl = ref<string>('');
+const initialTabUrl = ref<string>('');
 
 // 消息类型标签页
-const messageTabs = [
+const messageTabs: MessageTab[] = [
   { label: '所有消息', value: 'all' },
   { label: '发送消息', value: 'send' },
   { label: '接收消息', value: 'receive' }
@@ -97,17 +103,15 @@ const messageTabs = [
 
 // 计算属性：过滤后的消息列表
 const filteredMessages = computed(() => {
-  // 如果没有消息或当前标签页没有消息，返回空数组
   if (!messages.value || !activeTabUrl.value || !messages.value[activeTabUrl.value]) {
     return [];
   }
-  
+
   return messages.value[activeTabUrl.value].filter(msg => {
-    // 消息类型筛选
-    const typeMatch = activeMessageTab.value === 'all' || 
-                     (activeMessageTab.value === 'send' && msg.data.direction === 'send') ||
-                     (activeMessageTab.value === 'receive' && msg.data.direction === 'receive');
-    
+    const typeMatch = activeMessageTab.value === 'all' ||
+      (activeMessageTab.value === 'send' && msg.data.direction === 'send') ||
+      (activeMessageTab.value === 'receive' && msg.data.direction === 'receive');
+
     return typeMatch;
   });
 });
@@ -119,20 +123,20 @@ const tabUrls = computed(() => {
 });
 
 // 方法：根据消息类型获取消息数量
-const getMessageCountByType = (type) => {
+const getMessageCountByType = (type: 'all' | 'send' | 'receive'): number => {
   if (!activeTabUrl.value || !messages.value || !messages.value[activeTabUrl.value]) {
     return 0;
   }
 
   if (type === 'all') return messages.value[activeTabUrl.value].length;
-  
-  return messages.value[activeTabUrl.value].filter(msg => 
+
+  return messages.value[activeTabUrl.value].filter(msg =>
     type === 'send' ? msg.data.direction === 'send' : msg.data.direction === 'receive'
   ).length;
 };
 
 // 方法：从 URL 中获取 hostname
-const getHostFromUrl = (url) => {
+const getHostFromUrl = (url: string): string => {
   try {
     if (!url) return '未知标签页';
     const urlObj = new URL(url);
@@ -143,12 +147,12 @@ const getHostFromUrl = (url) => {
 };
 
 // 切换侧边栏
-const toggleSidebar = () => {
+const toggleSidebar = (): void => {
   isOpen.value = !isOpen.value;
 };
 
 // 切换自动滚动
-const toggleAutoScroll = () => {
+const toggleAutoScroll = (): void => {
   autoScroll.value = !autoScroll.value;
   if (autoScroll.value) {
     scrollToBottom();
@@ -156,69 +160,52 @@ const toggleAutoScroll = () => {
 };
 
 // 处理接收到的消息
-const handleMessage = (event) => {
+const handleMessage = (event: MessageEvent): void => {
   try {
-    // 更详细的调试输出
     console.log('App.vue 接收到消息:', event.source, event.data);
-    
-    // 判断消息来源，使用origin和source双重检查
-    const isSafeOrigin = event.origin === 'null' || event.origin.startsWith('chrome-extension://');
-    
-    // 处理从content script加载的历史消息 - 完全替换模式
+
     if (event.data && event.data.source === 'content-script' && event.data.action === 'messages_loaded') {
-      // console.log('收到历史消息集合(完全替换):', event.data.messages?.length);
       if (event.data.messages) {
-        // 初始化消息对象
         messages.value = event.data.messages;
-        
-        // 初始化如果没有活跃的tabUrl
+
         if (!activeTabUrl.value && event.data.activeTabUrl) {
           activeTabUrl.value = event.data.activeTabUrl;
           initialTabUrl.value = event.data.activeTabUrl;
         }
-        
-        // 确保当前活跃标签页有消息数组
+
         if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
           messages.value[activeTabUrl.value] = [];
         }
-        
-        // console.log('已加载历史消息，当前消息数量:', messages.value[activeTabUrl.value]?.length || 0);
+
         if (autoScroll.value) {
           scrollToBottom();
         }
       }
       return;
     }
-    
-    // 处理从content script获取的消息更新 - 只更新模式
+
     if (event.data && event.data.source === 'content-script' && event.data.action === 'messages_update') {
-      // console.log('收到消息更新(保留现有消息):', event.data.messages);
       if (event.data.messages) {
-        // 更新消息对象
         messages.value = event.data.messages;
-        
-        // 确保当前活跃标签页有消息数组
+
         if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
           messages.value[activeTabUrl.value] = [];
         }
-        
-        // console.log('已更新消息列表，当前消息数量:', messages.value[activeTabUrl.value]?.length || 0);
+
         if (autoScroll.value) {
           scrollToBottom();
         }
       }
       return;
     }
-    
-    // 处理常规WebSocket消息 - 使用更宽松的条件匹配
-    const isWebSocketMessage = event.data && 
-                           (event.data.source === 'websocket-hooks-script' || 
-                            (event.data.type && 
-                             (event.data.type === 'WEBSOCKET_MESSAGE' || 
-                              event.data.type === 'WEBSOCKET_CONNECTION')));
-                              
+
+    const isWebSocketMessage = event.data &&
+      (event.data.source === 'websocket-hooks-script' ||
+        (event.data.type &&
+          (event.data.type === 'WEBSOCKET_MESSAGE' ||
+            event.data.type === 'WEBSOCKET_CONNECTION')));
+
     if (isWebSocketMessage) {
-      // console.log('接收到WebSocket消息，准备处理:', event.data);
       processMessage(event.data);
     }
   } catch (error) {
@@ -226,39 +213,35 @@ const handleMessage = (event) => {
   }
 };
 
-// 消息处理逻辑，抽取为独立函数方便复用
-const processMessage = (receivedEvent) => {
+// 消息处理逻辑
+const processMessage = (receivedEvent: WebSocketMessage): void => {
   try {
-    // console.log('处理消息:', receivedEvent);
-    
-    // 安全检查 - 确保消息格式正确
     if (!receivedEvent || !receivedEvent.data) {
       console.warn('消息格式不正确，跳过处理:', receivedEvent);
       return;
     }
-    
-    // 确定消息所属的标签页URL
+
     const msgTabUrl = receivedEvent.tabUrl || activeTabUrl.value || initialTabUrl.value;
-    
-    // 如果没有标签页URL，无法处理消息
+
     if (!msgTabUrl) {
       console.warn('无法确定消息所属标签页:', receivedEvent);
       return;
     }
-    
-    // 确保该标签页在messages中有对应的数组
+
     if (!messages.value[msgTabUrl]) {
       messages.value[msgTabUrl] = [];
     }
-    
-    let messageToAdd;
+
+    let messageToAdd: WebSocketMessage;
 
     const baseData = {
       id: nextMessageId.value++,
       timestamp: receivedEvent.data?.timestamp || new Date().toISOString(),
       url: receivedEvent.data?.url,
       isNew: true,
-      tabUrl: msgTabUrl
+      tabUrl: msgTabUrl,
+      direction: receivedEvent.data.direction,
+      message: receivedEvent.data.message
     };
 
     if (receivedEvent.type === 'WEBSOCKET_MESSAGE') {
@@ -268,11 +251,10 @@ const processMessage = (receivedEvent) => {
         tabUrl: msgTabUrl,
         data: {
           ...baseData,
-          direction: receivedEvent.data.direction,
+          direction: receivedEvent.data.direction as 'send' | 'receive',
           message: receivedEvent.data.message,
         }
       };
-      // console.log('已创建WebSocket消息对象:', messageToAdd);
     } else if (receivedEvent.type === 'WEBSOCKET_CONNECTION') {
       messageToAdd = {
         source: receivedEvent.source,
@@ -284,34 +266,30 @@ const processMessage = (receivedEvent) => {
           message: `🔌 新的 WebSocket 连接已建立: ${receivedEvent.data.url}`,
         }
       };
+    } else {
+      return;
     }
 
-    if (messageToAdd) {
-      // 检查消息是否已存在（通过某些属性比较）
-      const isDuplicate = messages.value[msgTabUrl].some(m => 
-        m.data.message === messageToAdd.data.message && 
-        m.data.direction === messageToAdd.data.direction &&
-        Math.abs(new Date(m.data.timestamp) - new Date(messageToAdd.data.timestamp)) < 100 // 允许100ms误差
-      );
-      
-      if (!isDuplicate) {
-        messages.value[msgTabUrl].unshift(messageToAdd);
-        if (messages.value[msgTabUrl].length > 200) { // 保持与background.js中一致的消息上限
-          messages.value[msgTabUrl].pop();
-        }
-        // console.log('已添加消息到列表，当前消息数量:', messages.value[msgTabUrl].length);
-        if (autoScroll.value) {
-          scrollToBottom();
-        }
+    const isDuplicate = messages.value[msgTabUrl].some(m =>
+      m.data.message === messageToAdd.data.message &&
+      m.data.direction === messageToAdd.data.direction &&
+      Math.abs(new Date(m.data.timestamp).getTime() - new Date(messageToAdd.data.timestamp).getTime()) < 100
+    );
 
-        // 移除旧消息的高亮
-        setTimeout(() => {
-          const newMsg = messages.value[msgTabUrl].find(m => m.id === messageToAdd.id);
-          if (newMsg) newMsg.data.isNew = false;
-        }, 1500);
-      } else {
-        // console.log('跳过重复消息');
+    if (!isDuplicate) {
+      messages.value[msgTabUrl].unshift(messageToAdd);
+      if (messages.value[msgTabUrl].length > 200) {
+        messages.value[msgTabUrl].pop();
       }
+
+      if (autoScroll.value) {
+        scrollToBottom();
+      }
+
+      setTimeout(() => {
+        const newMsg = messages.value[msgTabUrl].find(m => m.id === messageToAdd.id);
+        if (newMsg) newMsg.data.isNew = false;
+      }, 1500);
     }
   } catch (error) {
     console.error('处理消息内容时出错:', error);
@@ -319,13 +297,17 @@ const processMessage = (receivedEvent) => {
 };
 
 // 格式化时间戳
-const formatTimestamp = (isoString) => {
+const formatTimestamp = (isoString: string): string => {
   if (!isoString) return '';
-  return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 2 });
+  return new Date(isoString).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 };
 
 // 获取方向文本
-const getDirectionText = (direction) => {
+const getDirectionText = (direction: MessageDirection): string => {
   switch (direction) {
     case 'send': return '📤 发送';
     case 'receive': return '📥 接收';
@@ -335,17 +317,16 @@ const getDirectionText = (direction) => {
 };
 
 // 截断 URL
-const truncateUrl = (url, maxLength = 40) => {
+const truncateUrl = (url: string, maxLength: number = 40): string => {
   if (!url) return '';
   if (url.length <= maxLength) return url;
   return url.substring(0, maxLength - 3) + '...';
 };
 
 // 格式化消息内容
-const formatMessageContent = (content) => {
+const formatMessageContent = (content: string): string => {
   if (!content) return '';
 
-  // 尝试解析 JSON 并美化显示
   try {
     if (typeof content === 'string' && (content.startsWith('{') || content.startsWith('['))) {
       const parsedJson = JSON.parse(content);
@@ -359,7 +340,7 @@ const formatMessageContent = (content) => {
 };
 
 // 滚动到底部
-const scrollToBottom = () => {
+const scrollToBottom = (): void => {
   nextTick(() => {
     if (messageListContainerRef.value) {
       messageListContainerRef.value.scrollTop = messageListContainerRef.value.scrollHeight;
@@ -368,17 +349,14 @@ const scrollToBottom = () => {
 };
 
 // 清空消息
-const clearMessages = () => {
-  // 确保当前标签页存在
+const clearMessages = (): void => {
   if (!activeTabUrl.value || !messages.value[activeTabUrl.value]) {
     return;
   }
-  
-  // 清空当前标签页的消息
+
   messages.value[activeTabUrl.value] = [];
   connectedUrl.value = null;
 
-  // 通知父页面清空存储的消息
   if (window.parent !== window) {
     window.parent.postMessage({
       source: 'websocket-sidebar',
@@ -389,13 +367,13 @@ const clearMessages = () => {
 };
 
 // 复制内容到剪贴板
-const copyToClipboard = (text) => {
-  navigator.clipboard.writeText(text).then(() => {
+const copyToClipboard = async (text: string): Promise<void> => {
+  try {
+    await navigator.clipboard.writeText(text);
     console.log('Message copied to clipboard');
-    // 可以添加一个临时提示
-  }).catch(err => {
+  } catch (err) {
     console.error('Failed to copy message: ', err);
-  });
+  }
 };
 
 // 监听 tab 切换，自动滚动到底部
@@ -406,12 +384,11 @@ watch(activeMessageTab, () => {
 });
 
 // 监听 activeTabUrl 变化，切换显示的标签页消息
-watch(activeTabUrl, (newUrl, oldUrl) => {
-  // 当标签页URL变化时，初始化该标签页的消息数组（如果不存在）
+watch(activeTabUrl, (newUrl: string) => {
   if (newUrl && !messages.value[newUrl]) {
     messages.value[newUrl] = [];
   }
-  
+
   if (autoScroll.value) {
     nextTick(() => scrollToBottom());
   }
@@ -419,10 +396,9 @@ watch(activeTabUrl, (newUrl, oldUrl) => {
 
 // 生命周期钩子
 onMounted(() => {
-  // 添加消息监听器，确保能接收各种来源的消息
   window.addEventListener('message', handleMessage, false);
   console.log('WebSocket Sidebar App.vue mounted and listening for messages.');
-  // 每隔2秒主动请求一次新消息，确保不会漏掉
+
   const messagePollingInterval = setInterval(() => {
     if (window.parent !== window) {
       window.parent.postMessage({
@@ -433,13 +409,11 @@ onMounted(() => {
     }
   }, 2000);
 
-  // 监听来自 content.js 的切换侧边栏可见性事件
   window.addEventListener('toggle-ws-sidebar-visibility', () => {
     toggleSidebar();
     console.log('侧边栏可见性已切换:', isOpen.value ? '显示' : '隐藏');
   });
 
-  // 通知父页面iframe已准备就绪并请求历史消息
   if (window.parent !== window) {
     window.parent.postMessage({
       source: 'websocket-sidebar',
@@ -448,7 +422,6 @@ onMounted(() => {
     }, '*');
   }
 
-  // 清理轮询定时器
   onBeforeUnmount(() => {
     clearInterval(messagePollingInterval);
     window.removeEventListener('message', handleMessage);

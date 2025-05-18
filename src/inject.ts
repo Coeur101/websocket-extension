@@ -1,17 +1,9 @@
-// WebSocketMessage接口定义
-interface WebSocketMessage {
-  source: string;
-  type: string;
-  tabUrl?: string;
-  data: {
-    direction?: string;
-    message?: any;
-    url?: string;
-    timestamp: string;
-    [key: string]: any;
-  };
-  [key: string]: any;
-}
+/// <reference types="chrome"/>
+
+import { DEFAULT_CONFIG } from './common/config';
+
+// 从storage获取配置
+let wsUrl = DEFAULT_CONFIG.LISTEN_WS_URL;
 
 // 注入WebSocket钩子到页面
 (function injectHooks() {
@@ -28,7 +20,12 @@ interface WebSocketMessage {
     WebSocket = function (url) {
       const wsInstanceUrl = url;
       const currentTabUrl = window.location.href;
-      
+      const ws = new origWebSocket(url);
+      // 如果URL不匹配，直接返回原始WebSocket实例
+      if (!wsInstanceUrl.includes("${wsUrl}")) {
+        return ws;
+      }
+
       // 发送WebSocket连接消息
       window.postMessage({ 
         source: 'websocket-hooks-script', 
@@ -39,9 +36,8 @@ interface WebSocketMessage {
           timestamp: new Date().toISOString() 
         } 
       }, '*');
-  
-      const ws = new origWebSocket(url);
-  
+
+      // 添加消息监听器
       ws.addEventListener("message", function (event) {
         console.log("🔴 拦截接收的消息", event.data);
         // 拦截接收的消息
@@ -65,7 +61,8 @@ interface WebSocketMessage {
           window.__websocketInspector.forwardMessage(message);
         }
       });
-  
+
+      // 重写send方法
       const origSend = ws.send;
       ws.send = function (data) {
         console.log("🔴 拦截发送的消息", data);
@@ -92,7 +89,7 @@ interface WebSocketMessage {
         
         return origSend.call(ws, data);
       };
-  
+
       return ws;
     };
   
@@ -111,7 +108,7 @@ interface WebSocketMessage {
   const script = document.createElement('script');
   script.textContent = wsHookCode;
   document.documentElement.appendChild(script);
-  
+
   // 移除script元素
   document.documentElement.removeChild(script);
 
@@ -119,4 +116,4 @@ interface WebSocketMessage {
 })();
 
 // 确保文件被识别为模块
-export {}; 
+export { };
