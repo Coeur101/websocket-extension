@@ -188,8 +188,6 @@ function storeMessage(message: WebSocketMessage): void {
       if (!message.tabUrl) {
         message.tabUrl = window.location.href;
       }
-
-      console.log('立即转发消息到iframe:', message);
       iframe.contentWindow.postMessage(message, '*');
     } catch (error) {
       console.error('转发消息到iframe失败:', error);
@@ -217,8 +215,6 @@ window.addEventListener('message', (event: Event) => {
       msgEvent.data.tabUrl = window.location.href;
     }
 
-    console.log('content.js 接收到postMessage', msgEvent.data);
-
     // 首先转发到iframe确保实时性，再存储
     storeMessage(msgEvent.data);
   }
@@ -238,7 +234,6 @@ window.addEventListener('message', (event: Event) => {
         tabUrl: window.location.href
       }, (response: any) => {
         if (response) {
-          console.log('获取到历史消息:', response);
           if (iframe && iframe.contentWindow) {
             iframe.contentWindow.postMessage({
               source: 'content-script',
@@ -258,7 +253,6 @@ window.addEventListener('message', (event: Event) => {
         tabUrl: window.location.href
       }, (response: any) => {
         if (response) {
-          console.log('轮询获取到历史消息:', response);
           if (iframe && iframe.contentWindow) {
             iframe.contentWindow.postMessage({
               source: 'content-script',
@@ -275,10 +269,10 @@ window.addEventListener('message', (event: Event) => {
     else if (msgEvent.data.action === 'clear_messages') {
       chrome.runtime.sendMessage({
         action: 'clear_messages',
-        tabUrl: msgEvent.data.tabUrl || window.location.href
+        tabUrl: msgEvent.data.tabUrl
       }, (response: any) => {
         if (response && response.success) {
-          console.log(`已清空标签页 ${msgEvent.data.tabUrl || window.location.href} 的历史消息`);
+          console.log(`已清空标签页 ${msgEvent.data.tabUrl} 的历史消息`);
         }
       });
     }

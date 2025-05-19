@@ -179,16 +179,19 @@ const handleMessage = (event: MessageEvent): void => {
   try {
     if (event.data && event.data.source === 'content-script' && event.data.action === 'messages_loaded') {
       if (event.data.messages) {
-        if (messages.value[event.data.activeTabUrl].length !== event.data.messages[event.data.activeTabUrl].length) {
-          messages.value = event.data.messages;
-
-          tabUrls.value = [{ label: '清空所有消息页', value: '' }, ...Object.keys(messages.value).map(item => {
+        const currentMessages = messages.value[event.data.activeTabUrl] || [];
+        let hasNewMessages = false;
+        if (currentMessages.some(e => e.data.isNew)) {
+          hasNewMessages = true
+        }
+        if (hasNewMessages) {
+          messages.value = { ...messages.value, ...event.data.messages };
+          tabUrls.value = [{ label: '清空所有消息页', value: '' }, ...Object.keys(event.data.messages).map(item => {
             return {
               label: item,
               value: item
             }
           })];
-
           if (!activeTabUrl.value && event.data.activeTabUrl) {
             activeTabUrl.value = event.data.activeTabUrl;
             initialTabUrl.value = event.data.activeTabUrl;
@@ -372,11 +375,14 @@ const scrollToTop = (): void => {
 
 // 清空消息
 const clearMessages = (): void => {
-
   if (activeTabUrl.value) {
     messages.value[activeTabUrl.value] = [];
     connectedUrl.value = null;
   } else {
+    tabUrls.value = [{
+      label: '清空所有消息页',
+      value: ''
+    }]
     messages.value = {};
   }
   if (window.parent !== window) {
