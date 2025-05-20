@@ -1,10 +1,32 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon48.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + Vue + TS</title>
+    <title>WebSocket 监控器</title>
+    <style>
+      html, body, #app {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100vh;
+        overflow: hidden;
+      }
+      
+      #app {
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* 确保Chrome侧边栏中的正确显示 */
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #202124;
+          color: #e8eaed;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

@@ -41,7 +41,8 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
 
     // 添加URL文本
     const urlText = document.createElement('span');
-    urlText.textContent = url.split('?')[0] || '未连接';
+    const displayUrl = url.split('?')[0] || '未连接';
+    urlText.textContent = displayUrl;
     urlText.style.overflow = 'hidden';
     urlText.style.textOverflow = 'ellipsis';
     urlText.style.whiteSpace = 'nowrap';
@@ -49,22 +50,40 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
     stateDiv.appendChild(icon);
     stateDiv.appendChild(urlText);
     stateDiv.addEventListener('click', () => {
-      // 发送消息到插件
-      window.postMessage({
-        source: 'websocket-hooks-script',
-        type: 'WEBSOCKET_URL_SEARCH',
-        searchUrl: url.split('?')[0],
-        data: {
-          url: url,
-          message: url,
-          direction: 'system',
-          timestamp: new Date().toISOString()
-        }
-      }, '*');
+
+      // 使用更可靠的方法发送消息
+      if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+        window.__websocketInspector.sendMessageToExtension({
+          source: 'websocket-hooks-script',
+          type: 'WEBSOCKET_URL_SEARCH',
+          searchUrl: displayUrl,
+          tabUrl: window.location.href,
+          data: {
+            url: url,
+            message: url,
+            direction: 'system',
+            timestamp: new Date().toISOString()
+          }
+        });
+      } else {
+        window.postMessage({
+          source: 'websocket-hooks-script',
+          type: 'WEBSOCKET_URL_SEARCH',
+          searchUrl: displayUrl,
+          tabUrl: window.location.href,
+          data: {
+            url: url,
+            message: url,
+            direction: 'system',
+            timestamp: new Date().toISOString()
+          }
+        }, '*');
+      }
     });
     component.appendChild(stateDiv);
   });
 };
+
 
 // 注入WebSocket钩子到页面
 (function injectHooks() {
@@ -79,6 +98,30 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
         wsUrl: "${wsUrl}"
       }
     };
+    
+    // 添加一个直接向Chrome扩展发送消息的方法
+    window.__websocketInspector.sendMessageToExtension = function(message) {
+      try {
+        // 尝试直接使用chrome.runtime.sendMessage
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+       
+          chrome.runtime.sendMessage(message);
+        } else {
+          // 回退到postMessage
+          window.postMessage({
+            source: 'websocket-hooks-script',
+            ...message
+          }, '*');
+        }
+      } catch (e) {
+        console.error('[WebSocket监控器] 发送消息到扩展失败:', e);
+        // 回退到postMessage
+        window.postMessage({
+          source: 'websocket-hooks-script',
+          ...message
+        }, '*');
+      }
+    };
   `;
 
   // 创建并注入辅助函数
@@ -90,23 +133,33 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
   // 引入ws.js的代码
   const wsHookCode = `
   (function () {
-    const origOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function () {
-      return origOpen.apply(this, arguments);
-    };
-    
-    const origWebSocket = WebSocket;
-    WebSocket = function (url) {
+    // 保存原始WebSocket构造函数
+    const origWebSocket = window.WebSocket;
+    // 替换WebSocket构造函数
+    window.WebSocket = function(url, protocols) {
       const wsInstanceUrl = url;
       const currentTabUrl = window.location.href;
-      const ws = new origWebSocket(url);
       
-      if (!wsInstanceUrl.includes(window.__websocketInspector.config.wsUrl)) {
-        return ws;
+      // 使用formSendData提取nodeId
+      let nodeId = '';
+      let apiUrl = '';
+      let state = false;
+      try {
+        if (window.__websocketInspector && window.__websocketInspector.formSendData) {
+          // 尝试使用formSendData解析URL获取nodeId
+          const parsedData = window.__websocketInspector.formSendData(url);
+          if (typeof parsedData === 'object' && parsedData && parsedData.com) {
+            nodeId = parsedData.com;
+            apiUrl = parsedData.url;
+            state = parsedData.state;
+          } 
+        }
+      } catch (e) {
+        console.error('[WebSocket监控器] 提取nodeId失败:', e);
       }
-
+      
       // 发送WebSocket连接消息
-      window.postMessage({ 
+      const connectionMessage = { 
         source: 'websocket-hooks-script', 
         type: 'WEBSOCKET_CONNECTION', 
         tabUrl: currentTabUrl,
@@ -114,52 +167,164 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
           url: wsInstanceUrl, 
           timestamp: new Date().toISOString() 
         } 
-      }, '*');
+      };
+      
+      // 使用增强的消息发送方法
+      if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+        window.__websocketInspector.sendMessageToExtension(connectionMessage);
+      } else {
+        window.postMessage(connectionMessage, '*');
+      }
+      
+      
+      // 更新UI状态
+      if (nodeId && window.__websocketInspector && typeof window.__websocketInspector.updateUi === 'function') {
+        window.__websocketInspector.updateUi(nodeId, state, apiUrl || wsInstanceUrl);
+      }
+  
+      // 创建原始WebSocket实例
+      const ws = new origWebSocket(url, protocols);
+      
+      // 监听连接关闭
+      ws.addEventListener('close', function() {
+     
+        if (nodeId && window.__websocketInspector && typeof window.__websocketInspector.updateUi === 'function') {
+          window.__websocketInspector.updateUi(nodeId, false, apiUrl || wsInstanceUrl);
 
-      // 添加消息监听器
-      ws.addEventListener("message", function (event) {
-        console.log("🔴 拦截接收的消息", event.data)
-
-        // 使用注入的辅助函数更新UI
-        if (window.__websocketInspector && window.__websocketInspector.updateUi) {
-          try {
-            const data = window.__websocketInspector.formReceiveData(event.data);
-            window.__websocketInspector.updateUi(data.com, data.state, data.url);
-          } catch (error) {
-           
-          }
         }
-
-        const message = {
-          source: 'websocket-hooks-script',
-          type: 'WEBSOCKET_MESSAGE',
-          tabUrl: currentTabUrl,
-          data: {
-            direction: 'receive',
-            message: event.data,
-            url: wsInstanceUrl,
-            timestamp: new Date().toISOString()
-          }
-        };
-        
-        window.postMessage(message, '*');
       });
-
+  
+      // 重写onmessage处理函数
+      const origAddEventListener = ws.addEventListener;
+      ws.addEventListener = function(type, listener, options) {
+        if (type === 'message') {
+          const wrappedListener = function(event) {
+            
+            // 尝试解析接收到的消息
+            try {
+              if (window.__websocketInspector && window.__websocketInspector.formReceiveData) {
+                const parsedData = window.__websocketInspector.formReceiveData(event.data);
+                if (typeof parsedData === 'object' && parsedData && parsedData.com) {
+                  nodeId = parsedData.com;
+                  apiUrl = parsedData.url;
+                  state = parsedData.state;
+                  
+                  // 更新UI状态
+                  if (window.__websocketInspector && typeof window.__websocketInspector.updateUi === 'function') {
+                    window.__websocketInspector.updateUi(nodeId, state, apiUrl);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('[WebSocket监控器] 解析接收消息失败:', e);
+            }
+            
+            // 创建消息对象
+            const message = {
+              source: 'websocket-hooks-script',
+              type: 'WEBSOCKET_MESSAGE',
+              tabUrl: currentTabUrl,
+              data: {
+                direction: 'receive',
+                message: event.data,
+                url: wsInstanceUrl,
+                timestamp: new Date().toISOString()
+              }
+            };
+            
+            // 使用增强的消息发送方法
+            if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+              window.__websocketInspector.sendMessageToExtension(message);
+            } else {
+              window.postMessage(message, '*');
+            }
+            
+            // 调用原始监听器
+            listener.call(this, event);
+          };
+          
+          return origAddEventListener.call(this, type, wrappedListener, options);
+        }
+        return origAddEventListener.call(this, type, listener, options);
+      };
+      
+      // 备份原始的onmessage属性设置器
+      const origDescriptor = Object.getOwnPropertyDescriptor(WebSocket.prototype, 'onmessage');
+      if (origDescriptor && origDescriptor.set) {
+        Object.defineProperty(ws, 'onmessage', {
+          set: function(handler) {
+            return origDescriptor.set.call(this, function(event) {
+              // 尝试解析接收到的消息
+              try {
+                if (window.__websocketInspector && window.__websocketInspector.formReceiveData) {
+                  const parsedData = window.__websocketInspector.formReceiveData(event.data);
+                  if (typeof parsedData === 'object' && parsedData && parsedData.com) {
+                    nodeId = parsedData.com;
+                    apiUrl = parsedData.url;
+                    state = parsedData.state;
+                    
+                    // 更新UI状态
+                    if (window.__websocketInspector && typeof window.__websocketInspector.updateUi === 'function') {
+                      window.__websocketInspector.updateUi(nodeId, state, apiUrl);
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error('[WebSocket监控器] 解析onmessage接收消息失败:', e);
+              }
+              
+              // 创建消息对象
+              const message = {
+                source: 'websocket-hooks-script',
+                type: 'WEBSOCKET_MESSAGE',
+                tabUrl: currentTabUrl,
+                data: {
+                  direction: 'receive',
+                  message: event.data,
+                  url: wsInstanceUrl,
+                  timestamp: new Date().toISOString()
+                }
+              };
+              
+              // 使用增强的消息发送方法
+              if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+                window.__websocketInspector.sendMessageToExtension(message);
+              } else {
+                window.postMessage(message, '*');
+              }
+              
+              // 调用原始处理函数
+              handler.call(this, event);
+            });
+          },
+          get: origDescriptor.get
+        });
+      }
+  
       // 重写send方法
       const origSend = ws.send;
-      ws.send = function (data) {
-        console.log("🔴 拦截发送的消息", data);
-
-        // 使用注入的辅助函数更新UI
-        if (window.__websocketInspector && window.__websocketInspector.updateUi) {
-          try {
-            const data = window.__websocketInspector.formSendData(data);
-            window.__websocketInspector.updateUi(data.com, data.state, data.url);
-          } catch (error) {
-          
+      ws.send = function(data) {
+        
+        // 尝试解析发送的消息
+        try {
+          if (window.__websocketInspector && window.__websocketInspector.formSendData) {
+            const parsedData = window.__websocketInspector.formSendData(data);
+            if (typeof parsedData === 'object' && parsedData && parsedData.com) {
+              nodeId = parsedData.com;
+              apiUrl = parsedData.url;
+              state = parsedData.state;
+              
+              // 更新UI状态
+              if (window.__websocketInspector && typeof window.__websocketInspector.updateUi === 'function') {
+                window.__websocketInspector.updateUi(nodeId, state, apiUrl);
+              }
+            }
           }
+        } catch (e) {
+          console.error('[WebSocket监控器] 解析发送消息失败:', e);
         }
-
+        
+        // 创建消息对象
         const message = {
           source: 'websocket-hooks-script',
           type: 'WEBSOCKET_MESSAGE',
@@ -172,46 +337,73 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
           }
         };
         
-        window.postMessage(message, '*');
-        return origSend.call(ws, data);
-      };
-
-      // 监听连接关闭
-      ws.addEventListener('close', () => {
-        if (window.__websocketInspector && window.__websocketInspector.updateUi) {
-          window.__websocketInspector.updateUi(currentTabUrl, false, wsInstanceUrl);
+        // 使用增强的消息发送方法
+        if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+          window.__websocketInspector.sendMessageToExtension(message);
+        } else {
+          window.postMessage(message, '*');
         }
-      });
-
+        
+        console.log('[WebSocket监控器] 发送消息已发送');
+        
+        // 调用原始send方法
+        return origSend.call(this, data);
+      };
+  
       return ws;
     };
   
-    // 保留原始WebSocket的属性
-    for (let key in origWebSocket) {
-      if (origWebSocket.hasOwnProperty(key)) {
-        WebSocket[key] = origWebSocket[key];
+    // 复制原始WebSocket的静态属性
+    window.WebSocket.prototype = origWebSocket.prototype;
+    window.WebSocket.CONNECTING = origWebSocket.CONNECTING;
+    window.WebSocket.OPEN = origWebSocket.OPEN;
+    window.WebSocket.CLOSING = origWebSocket.CLOSING;
+    window.WebSocket.CLOSED = origWebSocket.CLOSED;
+  
+    console.log("✅ [WebSocket监控器] 已成功Hook WebSocket (侧边栏版 v1.2)");
+    
+    // 添加页面消息监听器
+    window.addEventListener('message', function(event) {
+      // 处理状态UI切换
+      if (event.data && event.data.action === 'toggle_status_ui') {
+        const statusUIs = document.querySelectorAll('.websocket-status-ui');
+        statusUIs.forEach(function(ui) {
+          ui.style.display = event.data.show ? 'flex' : 'none';
+        });
       }
-    }
-    // 添加消息监听器
-  window.addEventListener('message', (event) => {
-    const statusUis = document.querySelectorAll('.websocket-status-ui')
-    if (event.data.action === 'toggle_status_ui') {
-      statusUis.forEach(ui => {
-        ui.style.display = event.data.show ? 'flex' : 'none';
+    });
+    
+    // 通知扩展WebSocket钩子已准备就绪
+    if (window.__websocketInspector && window.__websocketInspector.sendMessageToExtension) {
+      window.__websocketInspector.sendMessageToExtension({
+        type: 'WEBSOCKET_HOOK_READY',
+        tabUrl: window.location.href,
+        data: {
+          timestamp: new Date().toISOString(),
+          message: 'WebSocket钩子已准备就绪'
+        }
       });
     }
-  });
-    console.log("✅ 已 Hook WebSocket (iframe通信版 v1.1)");
   })();
   `;
 
   // 创建script元素并插入代码
   const script = document.createElement('script');
   script.textContent = wsHookCode;
-  document.documentElement.appendChild(script);
-  document.documentElement.removeChild(script);
+  
+  // 添加到页面
+  const parent = document.documentElement || document.head || document.body;
+  parent.appendChild(script);
+  
+  // 移除script元素
+  try {
+    parent.removeChild(script);
+    console.log('[WebSocket监控器] WebSocket钩子代码已注入页面');
+  } catch (error) {
+    console.error('[WebSocket监控器] 移除钩子脚本时出错:', error);
+  }
 
-  console.log('WebSocket钩子已注入页面');
+  console.log('[WebSocket监控器] inject.js 执行完成');
 })();
 
 // 确保文件被识别为模块

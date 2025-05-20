@@ -50,6 +50,8 @@ declare namespace chrome {
 interface Window {
   __websocketInspector?: {
     forwardMessage: (message: any) => void;
+    updateUi: (nodeId: string, state: boolean, url: string) => void;
+    sendMessageToExtension: (message: any) => void;
   };
 }
 
@@ -64,4 +66,5 @@ interface CustomEvent extends Event {
 
 interface CustomEventMap {
   'websocket-message': CustomEvent;
+  'websocket-update-ui': CustomEvent;
 } 

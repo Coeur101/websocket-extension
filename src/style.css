@@ -11,6 +11,14 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --sidebar-width: 100%;
+  --sidebar-height: 100vh;
+  --sidebar-bg-color: #f8f9fa;
+  --sidebar-header-bg: #343a40;
+  --sidebar-header-color: #fff;
+  --sidebar-border-color: #dee2e6;
+  --sidebar-shadow: -2px 0 10px rgba(0, 0, 0, 0.07);
 }
 
 a {
@@ -58,13 +66,6 @@ button:focus-visible {
   padding: 2em;
 }
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-}
-
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
@@ -75,5 +76,39 @@ button:focus-visible {
   }
   button {
     background-color: #f9f9f9;
+  }
+}
+
+/* 适应Chrome侧边栏的样式 */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+#app {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 暗色模式支持 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sidebar-bg-color: #202124;
+    --sidebar-header-bg: #292a2d;
+    --sidebar-header-color: #e8edec;
+    --sidebar-border-color: #3c4043;
+    --sidebar-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
+  }
+  
+  body {
+    background-color: #202124;
+    color: #e8eaed;
   }
 }
