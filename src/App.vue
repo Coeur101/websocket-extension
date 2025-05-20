@@ -184,11 +184,7 @@ const handleMessage = (event: MessageEvent): void => {
         const currentMessages = messages.value[event.data.activeTabUrl] || [];
         const newMessages = event.data.messages[event.data.activeTabUrl] || [];
         let hasNewMessages = false;
-        // 判断传送的messages的timestamp是否大于已有的message
-        const updateMessages = newMessages.filter((item: WebSocketMessage) => {
-          return currentMessages.some(e => e.data.timestamp < item.data.timestamp)
-        })
-        if (updateMessages.length > 0 || (currentMessages.length === 0 && newMessages.length > 0)) {
+        if (newMessages.length !== currentMessages.length) {
           hasNewMessages = true
         }
         if (hasNewMessages) {
