@@ -1,6 +1,6 @@
 <template>
   <div class="websocket-sidebar-app">
-    <div id="websocket-sidebar-container" :class="{ 'sidebar-visible': isOpen, 'sidebar-hidden': !isOpen }">
+    <div id="websocket-sidebar-container" class="sidebar-visible">
       <div class="sidebar-content">
         <h3>WebSocket 监控</h3>
 
@@ -50,12 +50,7 @@
                 <div class="message-meta">
                   <span class="direction-tag" :class="msg.data.direction">{{ getDirectionText(msg.data.direction)
                   }}</span>
-                  <span class="tab-host" v-if="!activeTabUrl && msg.tabUrl" :title="msg.tabUrl">{{
-                    getHostFromUrl(msg.tabUrl) }}</span>
                 </div>
-              </div>
-              <div class="message-url" v-if="msg.data.url">
-                <small title="WebSocket URL">连接: {{ truncateUrl(msg.data.url, 40) }}</small>
               </div>
               <pre class="message-data">{{ formatMessageContent(msg.data) }}</pre>
             </div>
@@ -89,28 +84,22 @@ import type {
   MessageDirection,
   WebSocketMessageData,
   SystemMessageData,
-  BaseMessageData
 } from './types/websocket';
 import { NInput, NSpace, NCheckbox } from 'naive-ui';
 import { useFormData } from './utils/useFormData';
 import { useDebounceFn } from '@vueuse/core';
 
-// 响应式数据
-const isOpen = ref<boolean>(true);
 const messages = ref<MessageMap>({});
-const connectedUrl = ref<string | null>(null);
 const nextMessageId = ref<number>(0);
 const messageListContainerRef = ref<HTMLElement | null>(null);
 const autoScroll = ref<boolean>(true);
 const activeMessageTab = ref<'all' | 'send' | 'receive'>('all');
 const activeTabUrl = ref<string | null>(null);
-const initialTabUrl = ref<string>('');
 const tabUrls = ref<{ label: string, value: string }[]>([]);
 const value = ref<string>('');
 const searchValue = ref<string>('');
 const showStatusUI = ref(true);
-
-
+const messagePollingInterval = ref<number | null>(null);
 // 消息类型标签页
 const messageTabs: MessageTab[] = [
   { label: '所有消息', value: 'all' },
@@ -118,6 +107,7 @@ const messageTabs: MessageTab[] = [
   { label: '接收消息', value: 'receive' }
 ];
 
+let chromePort: chrome.runtime.Port | null = null
 // 计算属性：过滤后的消息列表
 const filteredMessages = computed(() => {
   if (!messages.value || !activeTabUrl.value || !messages.value[activeTabUrl.value]) {
@@ -156,17 +146,6 @@ const getMessageCountByType = (type: 'all' | 'send' | 'receive'): number => {
   ).length;
 };
 
-// 方法：从 URL 中获取 hostname
-const getHostFromUrl = (url: string): string => {
-  try {
-    if (!url) return '未知标签页';
-    const urlObj = new URL(url);
-    return urlObj.href;
-  } catch (e) {
-    return url.split('/')[2] || url;
-  }
-};
-
 
 // 切换自动滚动
 const toggleAutoScroll = (): void => {
@@ -179,34 +158,31 @@ const toggleAutoScroll = (): void => {
 // 处理接收到的消息
 const handleMessage = (event: MessageEvent): void => {
   try {
-    if (event.data && event.data.source === 'content-script' && event.data.action === 'messages_update') {
-      if (event.data.messages) {
-        const currentMessages = messages.value[event.data.activeTabUrl] || [];
-        const newMessages = event.data.messages[event.data.activeTabUrl] || [];
-        let hasNewMessages = false;
-        if (newMessages.length !== currentMessages.length) {
-          hasNewMessages = true
+    if (event.data && event.data.source === 'content-script' && event.data.messages) {
+      const currentMessages = messages.value[event.data.activeTabUrl] || [];
+      const newMessages = event.data.messages[event.data.activeTabUrl] || [];
+      let hasNewMessages = false;
+      if (newMessages.length !== currentMessages.length) {
+        hasNewMessages = true
+      }
+      if (hasNewMessages) {
+        messages.value = { ...messages.value, ...event.data.messages };
+        tabUrls.value = [{ label: '清空所有消息页', value: '' }, ...Object.keys(event.data.messages).map(item => {
+          return {
+            label: item,
+            value: item
+          }
+        })];
+        if (!activeTabUrl.value && event.data.activeTabUrl) {
+          activeTabUrl.value = event.data.activeTabUrl;
         }
-        if (hasNewMessages) {
-          messages.value = { ...messages.value, ...event.data.messages };
-          tabUrls.value = [{ label: '清空所有消息页', value: '' }, ...Object.keys(event.data.messages).map(item => {
-            return {
-              label: item,
-              value: item
-            }
-          })];
-          if (!activeTabUrl.value && event.data.activeTabUrl) {
-            activeTabUrl.value = event.data.activeTabUrl;
-            initialTabUrl.value = event.data.activeTabUrl;
-          }
 
-          if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
-            messages.value[activeTabUrl.value] = [];
-          }
+        if (activeTabUrl.value && !messages.value[activeTabUrl.value]) {
+          messages.value[activeTabUrl.value] = [];
+        }
 
-          if (autoScroll.value) {
-            scrollToTop();
-          }
+        if (autoScroll.value) {
+          scrollToTop();
         }
       }
       return;
@@ -236,7 +212,7 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
       return;
     }
 
-    const msgTabUrl = receivedEvent.tabUrl || activeTabUrl.value || initialTabUrl.value;
+    const msgTabUrl = receivedEvent.tabUrl || activeTabUrl.value
 
     if (!msgTabUrl) {
       console.warn('无法确定消息所属标签页:', receivedEvent);
@@ -268,17 +244,6 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
           ...baseData,
           direction: receivedEvent.data.direction as 'send' | 'receive',
           message: receivedEvent.data.message,
-        }
-      };
-    } else if (receivedEvent.type === 'WEBSOCKET_CONNECTION') {
-      messageToAdd = {
-        source: receivedEvent.source,
-        type: 'INFO',
-        tabUrl: msgTabUrl,
-        data: {
-          ...baseData,
-          direction: 'system',
-          message: `🔌 新的 WebSocket 连接已建立: ${receivedEvent.data.url}`,
         }
       };
     } else {
@@ -331,13 +296,6 @@ const getDirectionText = (direction: MessageDirection): string => {
   }
 };
 
-// 截断 URL
-const truncateUrl = (url: string, maxLength: number = 40): string => {
-  if (!url) return '';
-  if (url.length <= maxLength) return url;
-  return url.substring(0, maxLength - 3) + '...';
-};
-
 // 格式化消息内容
 const formatMessageContent = (data: WebSocketMessageData | SystemMessageData): string => {
   const { direction } = data
@@ -364,7 +322,6 @@ const scrollToTop = (): void => {
 const clearMessages = (): void => {
   if (activeTabUrl.value) {
     messages.value[activeTabUrl.value] = [];
-    connectedUrl.value = null;
   } else {
     tabUrls.value = [{
       label: '清空所有消息页',
@@ -380,7 +337,7 @@ const clearMessages = (): void => {
   });
 };
 
-// 监听 tab 切换，自动滚动到底部
+// 监听 tab 切换，自动滚动到顶部
 watch(activeMessageTab, () => {
   if (autoScroll.value) {
     nextTick(() => scrollToTop());
@@ -401,9 +358,9 @@ watch(activeTabUrl, (newUrl: string | null) => {
 // 生命周期钩子
 onMounted(() => {
   // 建立与background.js的长连接
-  let port = chrome.runtime.connect({ name: 'websocket-sidebar' });
+  chromePort= chrome.runtime.connect({ name: 'websocket-sidebar' });
   // 监听长连接消息
-  port.onMessage.addListener((message) => {
+  chromePort?.onMessage.addListener((message: any) => {
     if (message.action === 'search_url') {
       searchValue.value = message.searchUrl || ''
       value.value = message.searchUrl || ''
@@ -421,68 +378,23 @@ onMounted(() => {
   });
 
   // 添加断开连接处理
-  port.onDisconnect.addListener(() => {
+  chromePort.onDisconnect.addListener(() => {
     // 尝试重新连接
     setTimeout(() => {
       try {
         const newPort = chrome.runtime.connect({ name: 'websocket-sidebar' });
-        port = newPort;
+        chromePort = newPort;
       } catch (e) {
         console.error('[WebSocket监控器] 重新连接background.js失败:', e);
       }
     }, 2000);
   });
 
-  window.addEventListener('message', handleMessage, false);
 
-  const messagePollingInterval = setInterval(() => {
-    // 优先使用长连接发送请求
-    try {
-      port.postMessage({
-        source: 'websocket-sidebar',
-        type: 'POLLING',
-        action: 'get_messages'
-      });
-    } catch (e) {
-      console.error('[WebSocket监控器] 通过长连接发送轮询请求失败:', e);
-      // 回退到标准消息
-      chrome.runtime.sendMessage({
-        source: 'websocket-sidebar',
-        type: 'POLLING',
-        action: 'get_messages'
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-
-          return;
-        }
-
-        if (response) {
-
-          handleMessage({
-            data: {
-              source: 'content-script',
-              action: 'messages_update',
-              messages: response.messages,
-              activeTabUrl: response.activeTabUrl
-            }
-          } as any);
-        }
-      });
-    }
-  }, 2000);
-  // 优先使用长连接发送请求
-  try {
-    port.postMessage({
-      source: 'websocket-sidebar',
-      type: 'IFRAME_READY',
-      action: 'get_messages'
-    });
-  } catch (e) {
-    console.error('[WebSocket监控器] 通过长连接发送初始化请求失败:', e);
-    // 回退到标准消息
+  messagePollingInterval.value = setInterval(() => {
     chrome.runtime.sendMessage({
       source: 'websocket-sidebar',
-      type: 'IFRAME_READY',
+      type: 'POLLING',
       action: 'get_messages'
     }, (response) => {
       if (chrome.runtime.lastError) {
@@ -490,34 +402,54 @@ onMounted(() => {
       }
 
       if (response) {
+
         handleMessage({
           data: {
             source: 'content-script',
-            action: 'messages_loaded',
+            action: 'messages_update',
             messages: response.messages,
             activeTabUrl: response.activeTabUrl
           }
         } as any);
       }
     });
-  }
+  }, 2000);
+  chrome.runtime.sendMessage({
+    source: 'websocket-sidebar',
+    type: 'IFRAME_READY',
+    action: 'get_messages'
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      return;
+    }
 
-  onBeforeUnmount(() => {
-    clearInterval(messagePollingInterval);
-    window.removeEventListener('message', handleMessage);
-
-    // 断开与background.js的长连接
-    try {
-      port.disconnect();
-    } catch (e) {
-      console.error('[WebSocket监控器] 断开长连接时出错:', e);
+    if (response) {
+      handleMessage({
+        data: {
+          source: 'content-script',
+          action: 'messages_loaded',
+          messages: response.messages,
+          activeTabUrl: response.activeTabUrl
+        }
+      } as any);
     }
   });
-});
 
+  
+});
+onBeforeUnmount(() => {
+  clearInterval(messagePollingInterval.value as number);
+  window.removeEventListener('message', handleMessage);
+
+  // 断开与background.js的长连接
+  try {
+    chromePort?.disconnect();
+  } catch (e) {
+    console.error('[WebSocket监控器] 断开长连接时出错:', e);
+  }
+});
 // 添加切换状态UI的方法
 function toggleStatusUI(checked: boolean) {
-  // 向content script发送消息
   try {
     chrome.runtime.sendMessage({
       source: 'websocket-sidebar',
@@ -793,10 +725,6 @@ h3 {
   color: #60676e;
   margin-bottom: 5px;
   word-break: break-all;
-}
-
-.message-url small {
-  font-style: italic;
 }
 
 pre.message-data {

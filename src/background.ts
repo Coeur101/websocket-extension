@@ -212,15 +212,10 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
 
   // 处理获取消息请求
   else if (message.action === 'get_messages') {
-    console.log('[WebSocket监控器] 处理获取消息请求');
     // 获取当前活跃标签页
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs: chrome.tabs.Tab[]) => {
       const currentTab = tabs[0];
-      const activeTabUrl = currentTab?.url || message.tabUrl || '';
-
-      console.log(`[WebSocket监控器] 当前活跃标签页URL: ${activeTabUrl}`);
-      console.log(`[WebSocket监控器] 消息映射中的标签页数: ${Object.keys(websocketMessagesMap).length}`);
-
+      const activeTabUrl = currentTab?.url || message.tabUrl || ''
       sendResponse({
         activeTabUrl: activeTabUrl,
         messages: websocketMessagesMap
