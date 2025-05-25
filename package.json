@@ -10,13 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
     "@vueuse/core": "^13.2.0",
+    "ant-design-x-vue": "^1.2.3",
     "dotenv": "^16.5.0",
+    "prismjs": "^1.30.0",
     "vue": "^3.3.4"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.323",
     "@types/node": "^22.15.18",
+    "@types/prismjs": "^1.26.5",
     "@types/vue": "^2.0.0",
     "@vitejs/plugin-vue": "^4.2.3",
     "eslint": "^8.34.0",

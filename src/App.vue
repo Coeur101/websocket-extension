@@ -2,74 +2,81 @@
   <div class="websocket-sidebar-app">
     <div id="websocket-sidebar-container" class="sidebar-visible">
       <div class="sidebar-content">
-        <h3>WebSocket 监控</h3>
-
-        <!-- 标签页切换器 - 消息类型 -->
-        <div class="tab-switcher message-type-tabs">
-          <button v-for="tab in messageTabs" :key="tab.value"
-            :class="['tab-button', { active: activeMessageTab === tab.value }]" @click="activeMessageTab = tab.value">
-            {{ tab.label }} <span class="badge" v-if="getMessageCountByType(tab.value)">{{
-              getMessageCountByType(tab.value) }}</span>
-          </button>
-        </div>
-
-        <!-- 标签页 URL 选择器 -->
-        <div class="tab-url-filter">
-          <select class="url-select" v-model="activeTabUrl">
-            <option v-for="tab in tabUrls" :key="tab.value" :value="tab.value">
-              {{ tab.label }}
-            </option>
-          </select>
-          <n-space vertical>
-            <n-input v-model:value="value" @change="debouncedSearch" type="text" placeholder="搜索nodeId或Api" clearable />
-          </n-space>
-        </div>
-        <div class="empty-message preview-warning" v-if="!activeTabUrl?.includes('preview')">
-          <div class="warning-icon">⚠️</div>
-          <div class="warning-content">
-            <h4>仅支持预览模式</h4>
-            <p>请在 DASV 预览页面模式下查看 WebSocket 消息</p>
+        <n-popselect v-model:value="menuValue" :options="menuOption" trigger="click">
+          <n-button>{{ menuValue }}</n-button>
+        </n-popselect>
+        <template v-if="menuValue === 'WebSocket监控'">
+          <!-- 标签页切换器 - 消息类型 -->
+          <div class="tab-switcher message-type-tabs">
+            <button v-for="tab in messageTabs" :key="tab.value"
+              :class="['tab-button', { active: activeMessageTab === tab.value }]" @click="activeMessageTab = tab.value">
+              {{ tab.label }} <span class="badge" v-if="getMessageCountByType(tab.value)">{{
+                getMessageCountByType(tab.value) }}</span>
+            </button>
           </div>
-        </div>
-        <template v-else>
-          <!-- 消息列表 -->
-          <div class="message-list-container" ref="messageListContainerRef">
-            <n-space item-style="display: flex;" align="center" justify="center">
-              <n-checkbox v-model:checked="showStatusUI" @update:checked="toggleStatusUI">
-                显示状态UI
-              </n-checkbox>
+
+          <!-- 标签页 URL 选择器 -->
+          <div class="tab-url-filter">
+            <n-select class="url-select" :options="tabUrls" v-model:value="activeTabUrl">
+              <!-- <option v-for="tab in tabUrls" :key="tab.value" :value="tab.value">
+              {{ tab.label }}
+            </option> -->
+            </n-select>
+            <n-space vertical>
+              <n-input v-model:value="value" @change="debouncedSearch" type="text" placeholder="搜索nodeId或Api"
+                clearable />
             </n-space>
-            <div v-if="filteredMessages.length === 0" class="empty-message">
-              {{ activeMessageTab === 'all' ? '等待 WebSocket 消息...' : `没有${activeMessageTab === 'send' ? '发送' : '接收'}的消息`
-              }}
+          </div>
+          <div class="empty-message preview-warning" v-if="!activeTabUrl?.includes('preview')">
+            <div class="warning-icon">⚠️</div>
+            <div class="warning-content">
+              <h4>仅支持预览模式</h4>
+              <p>请在 DASV 预览页面模式下查看 WebSocket 消息</p>
             </div>
-            <div v-for="(msg, index) in filteredMessages" :key="msg.id || index" class="message-item"
-              :class="[msg.data.direction, { 'highlight': msg.isNew }]">
-              <div class="message-header">
-                <span class="timestamp">{{ formatTimestamp(msg.data.timestamp) }}</span>
-                <div class="message-meta">
-                  <span class="direction-tag" :class="msg.data.direction">{{ getDirectionText(msg.data.direction)
-                  }}</span>
-                </div>
+          </div>
+          <template v-else>
+            <!-- 消息列表 -->
+            <div class="message-list-container" ref="messageListContainerRef">
+              <n-space item-style="display: flex;" align="center" justify="center">
+                <n-checkbox v-model:checked="showStatusUI" @update:checked="toggleStatusUI">
+                  显示状态UI
+                </n-checkbox>
+              </n-space>
+              <div v-if="filteredMessages.length === 0" class="empty-message">
+                {{ activeMessageTab === 'all' ? '等待 WebSocket 消息...' : `没有${activeMessageTab === 'send' ? '发送' :
+                  '接收'}的消息`
+                }}
               </div>
-              <pre class="message-data">{{ formatMessageContent(msg.data) }}</pre>
+              <div v-for="(msg, index) in filteredMessages" :key="msg.id || index" class="message-item"
+                :class="[msg.data.direction, { 'highlight': msg.isNew }]">
+                <div class="message-header">
+                  <span class="timestamp">{{ formatTimestamp(msg.data.timestamp) }}</span>
+                  <div class="message-meta">
+                    <span class="direction-tag" :class="msg.data.direction">{{ getDirectionText(msg.data.direction)
+                    }}</span>
+                  </div>
+                </div>
+                <pre class="message-data">{{ formatMessageContent(msg.data) }}</pre>
+              </div>
+            </div>
+          </template>
+          <div class="sidebar-footer">
+            <span class="message-count">{{ filteredMessages.length }}/{{ messages[activeTabUrl as string]?.length }}
+              条消息</span>
+            <div class="action-buttons">
+              <button @click="toggleAutoScroll" class="action-btn" :class="{ active: autoScroll }" title="自动滚动到新消息">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                  <path
+                    d="M8 3a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 3zm4 8a4 4 0 0 1-8 0V7a4 4 0 1 1 8 0v4zm-4 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+                </svg>
+              </button>
+              <button @click="clearMessages" class="action-btn clear-btn" title="清空消息列表">清空</button>
             </div>
           </div>
         </template>
-        <div class="sidebar-footer">
-          <span class="message-count">{{ filteredMessages.length }}/{{ messages[activeTabUrl as string]?.length }}
-            条消息</span>
-          <div class="action-buttons">
-            <button @click="toggleAutoScroll" class="action-btn" :class="{ active: autoScroll }" title="自动滚动到新消息">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
-                <path
-                  d="M8 3a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 3zm4 8a4 4 0 0 1-8 0V7a4 4 0 1 1 8 0v4zm-4 2a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
-              </svg>
-            </button>
-            <button @click="clearMessages" class="action-btn clear-btn" title="清空消息列表">清空</button>
-          </div>
-        </div>
-
+        <template v-else>
+          <Chat></Chat>
+        </template>
       </div>
     </div>
   </div>
@@ -85,10 +92,13 @@ import type {
   WebSocketMessageData,
   SystemMessageData,
 } from './types/websocket';
-import { NInput, NSpace, NCheckbox } from 'naive-ui';
+import { formatTimestamp } from './utils/formData';
+import { NInput, NSpace, NCheckbox, NSelect, NPopselect, NButton } from 'naive-ui';
 import { useFormData } from './utils/useFormData';
 import { useDebounceFn } from '@vueuse/core';
+import Chat from '@/views/chat.vue';
 
+let chromePort: chrome.runtime.Port | null = null
 const messages = ref<MessageMap>({});
 const nextMessageId = ref<number>(0);
 const messageListContainerRef = ref<HTMLElement | null>(null);
@@ -100,14 +110,44 @@ const value = ref<string>('');
 const searchValue = ref<string>('');
 const showStatusUI = ref(true);
 const messagePollingInterval = ref<number | null>(null);
+const menuValue = ref<string>('AI');
 // 消息类型标签页
 const messageTabs: MessageTab[] = [
   { label: '所有消息', value: 'all' },
   { label: '发送消息', value: 'send' },
   { label: '接收消息', value: 'receive' }
 ];
+const { formSendData, formReceiveData } = useFormData()
 
-let chromePort: chrome.runtime.Port | null = null
+const menuOption = ref([
+  {
+    label: 'WebSocket监控',
+    value: 'WebSocket监控'
+  },
+  {
+    label: 'AI',
+    value: 'AI'
+  }
+])
+
+// 监听 tab 切换，自动滚动到顶部
+watch(activeMessageTab, () => {
+  if (autoScroll.value) {
+    nextTick(() => scrollToTop());
+  }
+});
+
+// 监听 activeTabUrl 变化，切换显示的标签页消息
+watch(activeTabUrl, (newUrl: string | null) => {
+  if (newUrl && !messages.value[newUrl]) {
+    messages.value[newUrl] = [];
+  }
+
+  if (autoScroll.value) {
+    nextTick(() => scrollToTop());
+  }
+});
+
 // 计算属性：过滤后的消息列表
 const filteredMessages = computed(() => {
   if (!messages.value || !activeTabUrl.value || !messages.value[activeTabUrl.value]) {
@@ -129,9 +169,20 @@ const filteredMessages = computed(() => {
   return filterMessages;
 });
 
+// 消息搜索防抖函数
 const debouncedSearch = useDebounceFn((value: string) => {
   searchValue.value = value;
 }, 300);
+
+// 获取方向文本
+const getDirectionText = (direction: MessageDirection): string => {
+  switch (direction) {
+    case 'send': return '📤 发送';
+    case 'receive': return '📥 接收';
+    case 'system': return '⚙️ 系统';
+    default: return '消息';
+  }
+};
 
 // 方法：根据消息类型获取消息数量
 const getMessageCountByType = (type: 'all' | 'send' | 'receive'): number => {
@@ -275,31 +326,10 @@ const processMessage = (receivedEvent: WebSocketMessage): void => {
     console.error('处理消息内容时出错:', error);
   }
 };
-
-// 格式化时间戳
-const formatTimestamp = (isoString: string): string => {
-  if (!isoString) return '';
-  return new Date(isoString).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-};
-
-// 获取方向文本
-const getDirectionText = (direction: MessageDirection): string => {
-  switch (direction) {
-    case 'send': return '📤 发送';
-    case 'receive': return '📥 接收';
-    case 'system': return '⚙️ 系统';
-    default: return '消息';
-  }
-};
-
 // 格式化消息内容
 const formatMessageContent = (data: WebSocketMessageData | SystemMessageData): string => {
   const { direction } = data
-  const { formSendData, formReceiveData } = useFormData()
+
   if (direction === 'send') {
     return formSendData(data.message) as string
   }
@@ -337,117 +367,7 @@ const clearMessages = (): void => {
   });
 };
 
-// 监听 tab 切换，自动滚动到顶部
-watch(activeMessageTab, () => {
-  if (autoScroll.value) {
-    nextTick(() => scrollToTop());
-  }
-});
 
-// 监听 activeTabUrl 变化，切换显示的标签页消息
-watch(activeTabUrl, (newUrl: string | null) => {
-  if (newUrl && !messages.value[newUrl]) {
-    messages.value[newUrl] = [];
-  }
-
-  if (autoScroll.value) {
-    nextTick(() => scrollToTop());
-  }
-});
-
-// 生命周期钩子
-onMounted(() => {
-  // 建立与background.js的长连接
-  chromePort= chrome.runtime.connect({ name: 'websocket-sidebar' });
-  // 监听长连接消息
-  chromePort?.onMessage.addListener((message: any) => {
-    if (message.action === 'search_url') {
-      searchValue.value = message.searchUrl || ''
-      value.value = message.searchUrl || ''
-    } else {
-      handleMessage({
-        data: {
-          source: 'content-script',
-          action: message.action,
-          messages: message.messages,
-          activeTabUrl: message.activeTabUrl,
-        }
-      } as any);
-    }
-
-  });
-
-  // 添加断开连接处理
-  chromePort.onDisconnect.addListener(() => {
-    // 尝试重新连接
-    setTimeout(() => {
-      try {
-        const newPort = chrome.runtime.connect({ name: 'websocket-sidebar' });
-        chromePort = newPort;
-      } catch (e) {
-        console.error('[WebSocket监控器] 重新连接background.js失败:', e);
-      }
-    }, 2000);
-  });
-
-
-  messagePollingInterval.value = setInterval(() => {
-    chrome.runtime.sendMessage({
-      source: 'websocket-sidebar',
-      type: 'POLLING',
-      action: 'get_messages'
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        return;
-      }
-
-      if (response) {
-
-        handleMessage({
-          data: {
-            source: 'content-script',
-            action: 'messages_update',
-            messages: response.messages,
-            activeTabUrl: response.activeTabUrl
-          }
-        } as any);
-      }
-    });
-  }, 2000);
-  chrome.runtime.sendMessage({
-    source: 'websocket-sidebar',
-    type: 'IFRAME_READY',
-    action: 'get_messages'
-  }, (response) => {
-    if (chrome.runtime.lastError) {
-      return;
-    }
-
-    if (response) {
-      handleMessage({
-        data: {
-          source: 'content-script',
-          action: 'messages_loaded',
-          messages: response.messages,
-          activeTabUrl: response.activeTabUrl
-        }
-      } as any);
-    }
-  });
-
-  
-});
-onBeforeUnmount(() => {
-  clearInterval(messagePollingInterval.value as number);
-  window.removeEventListener('message', handleMessage);
-
-  // 断开与background.js的长连接
-  try {
-    chromePort?.disconnect();
-  } catch (e) {
-    console.error('[WebSocket监控器] 断开长连接时出错:', e);
-  }
-});
 // 添加切换状态UI的方法
 function toggleStatusUI(checked: boolean) {
   try {
@@ -484,6 +404,107 @@ function toggleStatusUI(checked: boolean) {
     console.error('[WebSocket监控器] 发送切换状态UI消息时出错:', e);
   }
 }
+
+
+
+
+
+// 生命周期钩子
+onMounted(() => {
+  console.log(chrome)
+  // 建立与background.js的长连接
+  if (chrome.runtime) {
+    chromePort = chrome.runtime.connect({ name: 'websocket-sidebar' });
+    // 监听长连接消息
+    chromePort?.onMessage.addListener((message: any) => {
+      if (message.action === 'search_url') {
+        searchValue.value = message.searchUrl || ''
+        value.value = message.searchUrl || ''
+      } else {
+        handleMessage({
+          data: {
+            source: 'content-script',
+            action: message.action,
+            messages: message.messages,
+            activeTabUrl: message.activeTabUrl,
+          }
+        } as any);
+      }
+
+    });
+
+    // 添加断开连接处理
+    chromePort.onDisconnect.addListener(() => {
+      // 尝试重新连接
+      setTimeout(() => {
+        try {
+          const newPort = chrome.runtime.connect({ name: 'websocket-sidebar' });
+          chromePort = newPort;
+        } catch (e) {
+          console.error('[WebSocket监控器] 重新连接background.js失败:', e);
+        }
+      }, 2000);
+    });
+
+
+    messagePollingInterval.value = setInterval(() => {
+      chrome.runtime.sendMessage({
+        source: 'websocket-sidebar',
+        type: 'POLLING',
+        action: 'get_messages'
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          return;
+        }
+
+        if (response) {
+
+          handleMessage({
+            data: {
+              source: 'content-script',
+              action: 'messages_update',
+              messages: response.messages,
+              activeTabUrl: response.activeTabUrl
+            }
+          } as any);
+        }
+      });
+    }, 2000);
+    chrome.runtime.sendMessage({
+      source: 'websocket-sidebar',
+      type: 'IFRAME_READY',
+      action: 'get_messages'
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        return;
+      }
+
+      if (response) {
+        handleMessage({
+          data: {
+            source: 'content-script',
+            action: 'messages_loaded',
+            messages: response.messages,
+            activeTabUrl: response.activeTabUrl
+          }
+        } as any);
+      }
+    });
+
+  }
+});
+onBeforeUnmount(() => {
+  clearInterval(messagePollingInterval.value as number);
+  window.removeEventListener('message', handleMessage);
+
+  // 断开与background.js的长连接
+  try {
+    chromePort?.disconnect();
+  } catch (e) {
+    console.error('[WebSocket监控器] 断开长连接时出错:', e);
+  }
+});
+
 </script>
 
 <style scoped lang="scss">
@@ -593,7 +614,6 @@ h3 {
 
 .url-select {
   flex: 1;
-  padding: 6px 8px;
   border: 1px solid #ced4da;
   border-radius: 4px;
   font-size: 0.9em;

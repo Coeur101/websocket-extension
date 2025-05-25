@@ -48,3 +48,12 @@ export const formReceiveData = (data: string) => {
   }
 
 }
+// 格式化时间戳
+export const formatTimestamp = (isoString: string): string => {
+  if (!isoString) return '';
+  return new Date(isoString).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};

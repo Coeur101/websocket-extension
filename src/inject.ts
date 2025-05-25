@@ -50,23 +50,22 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
     stateDiv.appendChild(icon);
     stateDiv.appendChild(urlText);
     stateDiv.addEventListener('click', () => {
-        window.postMessage({
-          source: 'websocket-hooks-script',
-          type: 'WEBSOCKET_URL_SEARCH',
-          searchUrl: displayUrl,
-          tabUrl: window.location.href,
-          data: {
-            url: url,
-            message: url,
-            direction: 'system',
-            timestamp: new Date().toISOString()
-          }
-        }, '*');
+      window.postMessage({
+        source: 'websocket-hooks-script',
+        type: 'WEBSOCKET_URL_SEARCH',
+        searchUrl: displayUrl,
+        tabUrl: window.location.href,
+        data: {
+          url: url,
+          message: url,
+          direction: 'system',
+          timestamp: new Date().toISOString()
+        }
+      }, '*');
     });
     component.appendChild(stateDiv);
   });
 };
-
 
 // 注入WebSocket钩子到页面
 (function injectHooks() {
@@ -291,11 +290,11 @@ const updateUi = (nodeId: string, state: boolean, url: string) => {
   // 创建script元素并插入代码
   const script = document.createElement('script');
   script.textContent = wsHookCode;
-  
+
   // 添加到页面
   const parent = document.documentElement || document.head || document.body;
   parent.appendChild(script);
-  
+
   // 移除script元素
   try {
     parent.removeChild(script);

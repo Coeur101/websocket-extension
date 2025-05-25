@@ -33,42 +33,11 @@ function fixManifestEncoding() {
   };
 }
 
-// 复制静态资源插件
-function copyAssets() {
-  return {
-    name: 'copy-assets',
-    writeBundle() {
-      // 确保目标目录存在
-      if (!fs.existsSync('dist')) {
-        fs.mkdirSync('dist');
-      }
-      
-      // 复制manifest.json
-      if (fs.existsSync('public/manifest.json')) {
-        fs.copyFileSync('public/manifest.json', 'dist/manifest.json');
-      }
-      
-      // 复制图标文件夹
-      if (fs.existsSync('public/icons')) {
-        if (!fs.existsSync('dist/icons')) {
-          fs.mkdirSync('dist/icons', { recursive: true });
-        }
-        
-        const iconFiles = fs.readdirSync('public/icons');
-        iconFiles.forEach(file => {
-          fs.copyFileSync(`public/icons/${file}`, `dist/icons/${file}`);
-        });
-      }
-    }
-  };
-}
-
 export default defineConfig({
   plugins: [
     vue(),
     cleanDist(),
-    fixManifestEncoding(),
-    copyAssets()
+    fixManifestEncoding()
   ],
   build: {
     outDir: 'dist',
